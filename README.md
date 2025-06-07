@@ -25,18 +25,15 @@ Automatically creates an access point for WiFi configuration when no internet co
 ## 🚀 Quick Start (Ubuntu Server)
 
 ```bash
-# Clone repository
-git clone https://github.com/yourusername/nipux-setup.git
+# Clone or copy repository to your Ubuntu Server
+git clone <this-repo> nipux-setup
 cd nipux-setup
 
-# Install offline dependencies (optional but recommended)
-cd offline-deps && ./install-packages.sh && cd ..
+# Run unified setup script (handles everything automatically)
+chmod +x setup.sh
+./setup.sh
 
-# Run main setup
-./setup-wifi-provisioning.sh
-
-# Reboot to activate
-sudo reboot
+# Follow prompts and reboot when asked
 ```
 
 ## 📋 Requirements
@@ -65,7 +62,13 @@ sudo reboot
 ## 🛠️ Management Commands
 
 ```bash
-# Check system status
+# Quick status check (auto-created helper)
+./status.sh
+
+# Reset to setup mode (auto-created helper)  
+./reset.sh
+
+# Check detailed system status
 sudo systemctl status wifi-provisioning
 
 # View real-time logs
@@ -77,7 +80,7 @@ sudo /etc/wifi-provisioning/scripts/health-check.sh
 # Run system tests
 sudo /etc/wifi-provisioning/scripts/test-system.sh
 
-# Force start provisioning (if stuck)
+# Manual force start provisioning (if needed)
 sudo rm -f /etc/wifi-provisioning/wifi-connected
 sudo systemctl restart wifi-provisioning
 
@@ -89,15 +92,20 @@ sudo systemctl stop wifi-provisioning
 
 ```
 nipux-setup/
-├── setup-wifi-provisioning.sh    # Main installation script
-├── install-dependencies.sh       # Dependency installer
-├── download-packages.sh          # Download offline packages
-├── offline-deps/                 # Pre-downloaded Ubuntu packages
-│   ├── *.deb                     # Essential .deb files
-│   └── install-packages.sh       # Offline installer
-├── DEPLOYMENT.md                 # Detailed deployment guide
-├── uninstall-wifi-provisioning.sh # Auto-generated uninstaller
-└── README.md                     # This file
+├── setup.sh                     # 🎯 UNIFIED SETUP SCRIPT (start here!)
+├── setup-wifi-provisioning.sh   # Main WiFi provisioning installer
+├── setup-wifi-connect.sh        # WiFi Connect fallback installer  
+├── install-dependencies.sh      # System dependency installer
+├── download-packages.sh         # Download offline packages
+├── prepare-offline-package.sh   # Prepare packages for offline use
+├── offline-packages/            # Pre-downloaded Ubuntu packages
+│   ├── amd64/                   # x86_64 packages
+│   └── install-offline-packages.sh
+├── offline-deps/                # Essential packages
+├── status.sh                    # 📊 Check system status (auto-created)
+├── reset.sh                     # 🔄 Reset to setup mode (auto-created)
+├── DEPLOYMENT.md                # Detailed deployment guide
+└── README.md                    # This file
 ```
 
 ## 🔧 Architecture

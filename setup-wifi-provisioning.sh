@@ -55,11 +55,11 @@ trap 'handle_error ${LINENO} $?' ERR
 # Cleanup on failure
 cleanup_on_failure() {
     log_warning "Cleaning up due to failure..."
-    sudo systemctl stop hostapd 2>/dev/null || true
-    sudo systemctl stop dnsmasq 2>/dev/null || true
-    sudo systemctl stop nginx 2>/dev/null || true
-    sudo systemctl stop php*-fpm 2>/dev/null || true
-    sudo ip link set "$AP_INTERFACE" down 2>/dev/null || true
+    $SUDO_CMD systemctl stop hostapd 2>/dev/null || true
+    $SUDO_CMD systemctl stop dnsmasq 2>/dev/null || true
+    $SUDO_CMD systemctl stop nginx 2>/dev/null || true
+    $SUDO_CMD systemctl stop php*-fpm 2>/dev/null || true
+    $SUDO_CMD ip link set "$AP_INTERFACE" down 2>/dev/null || true
 }
 
 # Pre-flight checks
@@ -68,14 +68,17 @@ check_requirements() {
     
     # Root check
     if [[ $EUID -eq 0 ]]; then
-        log_error "Do not run as root. Use sudo when needed."
-        exit 1
+        log_info "Running as root - will handle permissions appropriately"
+        SUDO_CMD=""
+    else
+        log_info "Running as user - will use sudo when needed"
+        SUDO_CMD="sudo"
     fi
     
     # Sudo check
-    if ! sudo -n true 2>/dev/null; then
+    if ! $SUDO_CMD -n true 2>/dev/null; then
         log_info "Need sudo access for system configuration"
-        sudo -v || exit 1
+        $SUDO_CMD -v || exit 1
     fi
     
     # OS check
@@ -121,10 +124,10 @@ install_dependencies() {
             "network-manager" "bridge-utils" "iptables"
         )
         
-        sudo apt-get update -qq || log_warning "Could not update package list"
+        $SUDO_CMD apt-get update -qq || log_warning "Could not update package list"
         for package in "${packages[@]}"; do
             if ! dpkg -l | grep -q "^ii  $package "; then
-                sudo apt-get install -y "$package" || log_warning "Failed to install $package"
+                $SUDO_CMD apt-get install -y "$package" || log_warning "Failed to install $package"
             fi
         done
     fi
@@ -136,13 +139,13 @@ install_dependencies() {
 create_directories() {
     log_info "Creating directory structure..."
     
-    sudo mkdir -p "$CONFIG_DIR"/{configs,scripts,logs}
-    sudo mkdir -p "$WEB_DIR"/{css,js,api}
-    sudo mkdir -p /var/log/wifi-provisioning
+    $SUDO_CMD mkdir -p "$CONFIG_DIR"/{configs,scripts,logs}
+    $SUDO_CMD mkdir -p "$WEB_DIR"/{css,js,api}
+    $SUDO_CMD mkdir -p /var/log/wifi-provisioning
     
     # Set permissions
-    sudo chown -R www-data:www-data "$WEB_DIR"
-    sudo chmod -R 755 "$WEB_DIR"
+    $SUDO_CMD chown -R www-data:www-data "$WEB_DIR"
+    $SUDO_CMD chmod -R 755 "$WEB_DIR"
     
     log_success "Directory structure created"
 }
@@ -151,7 +154,7 @@ create_directories() {
 configure_hostapd() {
     log_info "Configuring hostapd..."
     
-    sudo tee "$CONFIG_DIR/hostapd.conf" > /dev/null << EOF
+    $SUDO_CMD tee "$CONFIG_DIR/hostapd.conf" > /dev/null << EOF
 # WiFi Provisioning Access Point Configuration
 interface=$AP_INTERFACE
 driver=nl80211
@@ -166,8 +169,8 @@ wpa=0
 EOF
 
     # Create hostapd service override
-    sudo mkdir -p /etc/systemd/system/hostapd.service.d
-    sudo tee /etc/systemd/system/hostapd.service.d/override.conf > /dev/null << EOF
+    $SUDO_CMD mkdir -p /etc/systemd/system/hostapd.service.d
+    $SUDO_CMD tee /etc/systemd/system/hostapd.service.d/override.conf > /dev/null << EOF
 [Unit]
 After=network.target
 ConditionPathExists=!$CONFIG_DIR/wifi-connected
@@ -186,7 +189,7 @@ EOF
 configure_dnsmasq() {
     log_info "Configuring dnsmasq..."
     
-    sudo tee "$CONFIG_DIR/dnsmasq.conf" > /dev/null << EOF
+    $SUDO_CMD tee "$CONFIG_DIR/dnsmasq.conf" > /dev/null << EOF
 # WiFi Provisioning DHCP and DNS Configuration
 interface=$AP_INTERFACE
 bind-interfaces
@@ -201,8 +204,8 @@ address=/#/$AP_IP
 EOF
 
     # Create dnsmasq service override
-    sudo mkdir -p /etc/systemd/system/dnsmasq.service.d
-    sudo tee /etc/systemd/system/dnsmasq.service.d/override.conf > /dev/null << EOF
+    $SUDO_CMD mkdir -p /etc/systemd/system/dnsmasq.service.d
+    $SUDO_CMD tee /etc/systemd/system/dnsmasq.service.d/override.conf > /dev/null << EOF
 [Unit]
 After=hostapd.service
 Requires=hostapd.service
@@ -223,7 +226,7 @@ create_web_interface() {
     log_info "Creating web interface..."
     
     # Main HTML page
-    sudo tee "$WEB_DIR/index.html" > /dev/null << 'EOF'
+    $SUDO_CMD tee "$WEB_DIR/index.html" > /dev/null << 'EOF'
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -295,7 +298,7 @@ create_web_interface() {
 EOF
 
     # CSS styling
-    sudo tee "$WEB_DIR/css/style.css" > /dev/null << 'EOF'
+    $SUDO_CMD tee "$WEB_DIR/css/style.css" > /dev/null << 'EOF'
 * {
     margin: 0;
     padding: 0;
@@ -474,7 +477,7 @@ button:hover {
 EOF
 
     # JavaScript application
-    sudo tee "$WEB_DIR/js/app.js" > /dev/null << 'EOF'
+    $SUDO_CMD tee "$WEB_DIR/js/app.js" > /dev/null << 'EOF'
 class WiFiSetup {
     constructor() {
         this.currentNetworks = [];
@@ -663,7 +666,7 @@ create_api_endpoints() {
     log_info "Creating API endpoints..."
     
     # Scan networks API
-    sudo tee "$WEB_DIR/api/scan.php" > /dev/null << 'EOF'
+    $SUDO_CMD tee "$WEB_DIR/api/scan.php" > /dev/null << 'EOF'
 <?php
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
@@ -739,7 +742,7 @@ try {
 EOF
 
     # Connect to network API
-    sudo tee "$WEB_DIR/api/connect.php" > /dev/null << 'EOF'
+    $SUDO_CMD tee "$WEB_DIR/api/connect.php" > /dev/null << 'EOF'
 <?php
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
@@ -794,8 +797,8 @@ try {
 EOF
 
     # Set correct permissions for PHP files
-    sudo chown -R www-data:www-data "$WEB_DIR/api"
-    sudo chmod 755 "$WEB_DIR/api"/*.php
+    $SUDO_CMD chown -R www-data:www-data "$WEB_DIR/api"
+    $SUDO_CMD chmod 755 "$WEB_DIR/api"/*.php
     
     log_success "API endpoints created"
 }
@@ -807,7 +810,7 @@ configure_nginx() {
     # Get PHP version
     PHP_VERSION=$(php -v | head -1 | cut -d' ' -f2 | cut -d'.' -f1,2)
     
-    sudo tee "$CONFIG_DIR/nginx.conf" > /dev/null << EOF
+    $SUDO_CMD tee "$CONFIG_DIR/nginx.conf" > /dev/null << EOF
 server {
     listen 80 default_server;
     listen [::]:80 default_server;
@@ -840,9 +843,9 @@ server {
 EOF
 
     # Link nginx config
-    sudo ln -sf "$CONFIG_DIR/nginx.conf" /etc/nginx/sites-available/wifi-setup
-    sudo ln -sf /etc/nginx/sites-available/wifi-setup /etc/nginx/sites-enabled/wifi-setup
-    sudo rm -f /etc/nginx/sites-enabled/default
+    $SUDO_CMD ln -sf "$CONFIG_DIR/nginx.conf" /etc/nginx/sites-available/wifi-setup
+    $SUDO_CMD ln -sf /etc/nginx/sites-available/wifi-setup /etc/nginx/sites-enabled/wifi-setup
+    $SUDO_CMD rm -f /etc/nginx/sites-enabled/default
     
     log_success "nginx configured"
 }
@@ -852,7 +855,7 @@ create_network_scripts() {
     log_info "Creating network management scripts..."
     
     # AP startup script
-    sudo tee "$CONFIG_DIR/scripts/start-ap.sh" > /dev/null << EOF
+    $SUDO_CMD tee "$CONFIG_DIR/scripts/start-ap.sh" > /dev/null << EOF
 #!/bin/bash
 set -euo pipefail
 
@@ -878,7 +881,7 @@ log "Access point interface configured"
 EOF
 
     # AP shutdown script
-    sudo tee "$CONFIG_DIR/scripts/stop-ap.sh" > /dev/null << EOF
+    $SUDO_CMD tee "$CONFIG_DIR/scripts/stop-ap.sh" > /dev/null << EOF
 #!/bin/bash
 set -euo pipefail
 
@@ -902,7 +905,7 @@ log "Access point stopped"
 EOF
 
     # Make scripts executable
-    sudo chmod +x "$CONFIG_DIR/scripts"/*.sh
+    $SUDO_CMD chmod +x "$CONFIG_DIR/scripts"/*.sh
     
     log_success "Network management scripts created"
 }
@@ -911,7 +914,7 @@ EOF
 create_main_service() {
     log_info "Creating main WiFi provisioning service..."
     
-    sudo tee /etc/systemd/system/wifi-provisioning.service > /dev/null << EOF
+    $SUDO_CMD tee /etc/systemd/system/wifi-provisioning.service > /dev/null << EOF
 [Unit]
 Description=WiFi Provisioning System
 After=network.target
@@ -939,7 +942,7 @@ EOF
 configure_sudoers() {
     log_info "Configuring sudoers for web interface..."
     
-    sudo tee /etc/sudoers.d/wifi-provisioning > /dev/null << EOF
+    $SUDO_CMD tee /etc/sudoers.d/wifi-provisioning > /dev/null << EOF
 # Allow www-data to execute network commands for WiFi provisioning
 www-data ALL=(ALL) NOPASSWD: /sbin/iw
 www-data ALL=(ALL) NOPASSWD: /usr/bin/nmcli
@@ -955,7 +958,7 @@ create_monitoring() {
     log_info "Creating monitoring scripts..."
     
     # Health check script
-    sudo tee "$CONFIG_DIR/scripts/health-check.sh" > /dev/null << EOF
+    $SUDO_CMD tee "$CONFIG_DIR/scripts/health-check.sh" > /dev/null << EOF
 #!/bin/bash
 # Health check for WiFi provisioning system
 
@@ -1012,10 +1015,10 @@ else
 fi
 EOF
 
-    sudo chmod +x "$CONFIG_DIR/scripts/health-check.sh"
+    $SUDO_CMD chmod +x "$CONFIG_DIR/scripts/health-check.sh"
     
     # Create health check timer
-    sudo tee /etc/systemd/system/wifi-provisioning-health.service > /dev/null << EOF
+    $SUDO_CMD tee /etc/systemd/system/wifi-provisioning-health.service > /dev/null << EOF
 [Unit]
 Description=WiFi Provisioning Health Check
 After=wifi-provisioning.service
@@ -1026,7 +1029,7 @@ ExecStart=$CONFIG_DIR/scripts/health-check.sh
 User=root
 EOF
 
-    sudo tee /etc/systemd/system/wifi-provisioning-health.timer > /dev/null << EOF
+    $SUDO_CMD tee /etc/systemd/system/wifi-provisioning-health.timer > /dev/null << EOF
 [Unit]
 Description=WiFi Provisioning Health Check Timer
 Requires=wifi-provisioning-health.service
@@ -1047,7 +1050,7 @@ EOF
 create_tests() {
     log_info "Creating test suite..."
     
-    sudo tee "$CONFIG_DIR/scripts/test-system.sh" > /dev/null << 'EOF'
+    $SUDO_CMD tee "$CONFIG_DIR/scripts/test-system.sh" > /dev/null << 'EOF'
 #!/bin/bash
 # Comprehensive test suite for WiFi provisioning system
 
@@ -1175,7 +1178,7 @@ else
 fi
 EOF
 
-    sudo chmod +x "$CONFIG_DIR/scripts/test-system.sh"
+    $SUDO_CMD chmod +x "$CONFIG_DIR/scripts/test-system.sh"
     
     log_success "Test suite created"
 }
@@ -1242,18 +1245,18 @@ finalize_setup() {
     log_info "Finalizing setup..."
     
     # Reload systemd
-    sudo systemctl daemon-reload
+    $SUDO_CMD systemctl daemon-reload
     
     # Enable services
-    sudo systemctl enable wifi-provisioning.service
-    sudo systemctl enable wifi-provisioning-health.timer
+    $SUDO_CMD systemctl enable wifi-provisioning.service
+    $SUDO_CMD systemctl enable wifi-provisioning-health.timer
     
     # Start health monitoring
-    sudo systemctl start wifi-provisioning-health.timer
+    $SUDO_CMD systemctl start wifi-provisioning-health.timer
     
     # Create initial log files
-    sudo touch /var/log/wifi-provisioning/{system.log,ap.log,nginx.log}
-    sudo chown -R syslog:adm /var/log/wifi-provisioning
+    $SUDO_CMD touch /var/log/wifi-provisioning/{system.log,ap.log,nginx.log}
+    $SUDO_CMD chown -R syslog:adm /var/log/wifi-provisioning
     
     log_success "Setup finalized"
 }
@@ -1262,7 +1265,7 @@ finalize_setup() {
 run_tests() {
     log_info "Running system tests..."
     
-    if sudo "$CONFIG_DIR/scripts/test-system.sh"; then
+    if $SUDO_CMD "$CONFIG_DIR/scripts/test-system.sh"; then
         log_success "All tests passed!"
     else
         log_error "Some tests failed. Check the output above."
@@ -1314,8 +1317,8 @@ main() {
     log_info "Starting WiFi Provisioning System installation..."
     
     # Update todo
-    sudo mkdir -p "$(dirname "$LOG_FILE")"
-    sudo touch "$LOG_FILE"
+    $SUDO_CMD mkdir -p "$(dirname "$LOG_FILE")"
+    $SUDO_CMD touch "$LOG_FILE"
     
     check_requirements
     install_dependencies
@@ -1340,7 +1343,7 @@ main() {
     echo
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         log_info "Rebooting system..."
-        sudo reboot
+        $SUDO_CMD reboot
     else
         log_info "Please reboot manually when ready: sudo reboot"
     fi

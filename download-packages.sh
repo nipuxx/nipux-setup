@@ -70,4 +70,4 @@ EOF
 
 count=$(ls *.deb 2>/dev/null | wc -l)
 log_success "Downloaded $count packages to: $DEPS_DIR"
-log_info "Ready for GitHub commit!"
+log_info "Offline packages ready for deployment!"

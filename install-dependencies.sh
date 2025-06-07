@@ -26,8 +26,11 @@ DEPS_DIR="$SCRIPT_DIR/dependencies"
 # Check if running as root
 check_root() {
     if [[ $EUID -eq 0 ]]; then
-        log_error "This script should not be run as root. Use sudo when needed."
-        exit 1
+        log_info "Running as root - will handle permissions appropriately"
+        SUDO_CMD=""
+    else
+        log_info "Running as user - will use sudo when needed"
+        SUDO_CMD="sudo"
     fi
 }
 
@@ -117,8 +120,8 @@ install_packages() {
     # Try to install from local debs first
     if [[ -d "$DEPS_DIR/debs" ]] && [[ -n "$(ls -A "$DEPS_DIR/debs" 2>/dev/null)" ]]; then
         log_info "Installing from local packages..."
-        sudo dpkg -i "$DEPS_DIR/debs"/*.deb 2>/dev/null || true
-        sudo apt-get install -f -y 2>/dev/null || true
+        $SUDO_CMD dpkg -i "$DEPS_DIR/debs"/*.deb 2>/dev/null || true
+        $SUDO_CMD apt-get install -f -y 2>/dev/null || true
     fi
     
     # Install any missing packages from system
@@ -131,8 +134,8 @@ install_packages() {
     
     if [[ ${#missing_packages[@]} -gt 0 ]]; then
         log_info "Installing missing packages: ${missing_packages[*]}"
-        sudo apt-get update -qq 2>/dev/null || log_warning "Could not update package list"
-        sudo apt-get install -y "${missing_packages[@]}" || {
+        $SUDO_CMD apt-get update -qq 2>/dev/null || log_warning "Could not update package list"
+        $SUDO_CMD apt-get install -y "${missing_packages[@]}" || {
             log_error "Failed to install some packages. Offline mode may not work correctly."
         }
     fi

@@ -42,17 +42,15 @@ cd dependencies
 
 ### 2. Target Device Installation
 ```bash
-# Copy files to target device via USB
-sudo mount /dev/sdb1 /mnt/usb
-cp -r /mnt/usb/nipux-setup /home/user/
+# Copy files to target device via USB or download
+git clone <this-repo> nipux-setup
+cd nipux-setup
 
-# Run installation
-cd /home/user/nipux-setup
-chmod +x *.sh
-./setup-wifi-provisioning.sh
+# Run unified installation (handles everything automatically)
+chmod +x setup.sh
+./setup.sh
 
-# Reboot to activate
-sudo reboot
+# System will ask to reboot automatically
 ```
 
 ## 🔧 Detailed Setup Process

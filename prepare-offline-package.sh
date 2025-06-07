@@ -211,5 +211,5 @@ log_info "Package directory: $DEPS_DIR"
 log_info "Total packages downloaded: $(find "$DEPS_DIR" -name "*.deb" | wc -l)"
 
 echo
-echo -e "${GREEN}Ready for GitHub upload!${NC}"
+echo -e "${GREEN}Offline package preparation complete!${NC}"
 echo "The offline-packages directory contains everything needed for Ubuntu Server deployment."
