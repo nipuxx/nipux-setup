@@ -1,44 +1,67 @@
-# Ubuntu Server WiFi Provisioning System
+# NiPux Ethernet-First Network Management System
 
-🚀 **Production-grade, offline-capable WiFi provisioning for Ubuntu Server** 
+🚀 **Production-grade, ethernet-first network management with WiFi fallback** 
 
-Automatically creates an access point for WiFi configuration when no internet connection is available. Perfect for headless server deployments via USB drive.
+Intelligent network management that prioritizes ethernet connections and automatically provides WiFi provisioning when ethernet is unavailable. Perfect for headless server deployments that need robust network connectivity.
 
 ## ✨ Features
 
-- **Fully Offline**: Works without internet connectivity
+- **Ethernet-First**: Prioritizes ethernet connections for maximum reliability
+- **Automatic Fallback**: Seamlessly switches to WiFi provisioning when ethernet unavailable
+- **Fully Offline**: Works without internet connectivity during setup
 - **Production Ready**: Comprehensive error handling, logging, monitoring
 - **Self-Contained**: All dependencies included or bundled
-- **Automatic**: Starts on boot when no WiFi connection exists
+- **Intelligent Monitoring**: Continuously monitors network state and adapts
 - **User-Friendly**: Mobile-responsive captive portal interface
 - **Robust**: Health checks, recovery mechanisms, comprehensive testing
 
 ## 🎯 How It Works
 
-1. **Boot Detection** → System checks for WiFi connection
-2. **Access Point** → Creates `{hostname}-setup` hotspot if no WiFi
-3. **Captive Portal** → User connects and gets redirected to setup page
-4. **WiFi Selection** → Scan networks, select, and enter password
-5. **Auto-Connect** → Connects to WiFi and shuts down access point
-6. **Done** → Normal operation with WiFi connected
+1. **Ethernet Monitor** → Continuously monitors ethernet connection status
+2. **Ethernet Priority** → Uses ethernet when available, WiFi provisioning stays inactive
+3. **Auto Fallback** → When ethernet disconnected, automatically starts WiFi provisioning
+4. **Access Point** → Creates `{hostname}-setup` hotspot for WiFi configuration
+5. **Captive Portal** → User connects and gets redirected to setup page
+6. **WiFi Selection** → Scan networks, select, and enter password
+7. **Auto-Connect** → Connects to WiFi and shuts down access point
+8. **Smart Resume** → System uses WiFi until ethernet is reconnected
 
 ## 🚀 Quick Start (Ubuntu Server)
 
-### Method 1: Bulletproof Installer (RECOMMENDED)
+### One-Command Installation
 ```bash
-# Clone or copy repository to your Ubuntu Server
+# 1. Connect ethernet cable and ensure internet access
+# 2. Clone repository and run installer
 git clone <this-repo> nipux-setup
 cd nipux-setup
 
-# Run bulletproof installer (handles ANY wireless hardware scenario)
-chmod +x install.sh
-./install.sh
+# 3. Run the installer - handles everything automatically
+chmod +x setup.sh
+./setup.sh
 
-# Choose bulletproof installer (recommended)
-# System handles everything automatically and reboots when ready
+# 4. Reboot when prompted
+# 5. System now monitors ethernet and provides WiFi fallback automatically
 ```
 
-### Method 2: Auto-Detecting Installer
+### System Behavior After Installation
+
+**With Ethernet Connected:**
+- Normal operation using ethernet connection
+- WiFi provisioning remains inactive
+- No access point created
+
+**Ethernet Disconnected:**
+- System automatically detects disconnection
+- Starts WiFi provisioning mode within 30 seconds
+- Creates `{hostname}-setup` access point
+- User can connect and configure WiFi
+
+**After WiFi Configuration:**
+- System connects to configured WiFi
+- Access point automatically shuts down
+- Continues monitoring for ethernet reconnection
+
+### Alternative Installation Methods
 ```bash
 # Alternative: Let the system choose the best installer
 chmod +x setup.sh
@@ -82,14 +105,23 @@ chmod +x setup.sh
 # Quick status check (auto-created helper)
 ./status.sh
 
-# Reset to setup mode (auto-created helper)  
+# Force WiFi provisioning mode (auto-created helper)  
 ./reset.sh
 
-# Check detailed system status
+# Check ethernet monitoring service
+sudo systemctl status nipux-ethernet-monitor
+
+# Check WiFi provisioning service
 sudo systemctl status wifi-provisioning
 
-# View real-time logs
+# View real-time monitoring logs
+sudo journalctl -u nipux-ethernet-monitor -f
+
+# View WiFi provisioning logs
 sudo journalctl -u wifi-provisioning -f
+
+# Check current network status
+sudo /usr/local/bin/nipux-ethernet-monitor status
 
 # Run health check
 sudo /etc/wifi-provisioning/scripts/health-check.sh
@@ -97,23 +129,23 @@ sudo /etc/wifi-provisioning/scripts/health-check.sh
 # Run system tests
 sudo /etc/wifi-provisioning/scripts/test-system.sh
 
-# Manual force start provisioning (if needed)
-sudo rm -f /etc/wifi-provisioning/wifi-connected
-sudo systemctl restart wifi-provisioning
+# Manual force WiFi provisioning (disconnect all and restart monitor)
+sudo rm -f /etc/nipux/active-ethernet /etc/nipux/network-status
+sudo systemctl restart nipux-ethernet-monitor
 
-# Emergency stop
-sudo systemctl stop wifi-provisioning
+# Emergency stop all services
+sudo systemctl stop nipux-ethernet-monitor wifi-provisioning
 ```
 
 ## 📁 Project Structure
 
 ```
 nipux-setup/
-├── install.sh                   # 🎯 AUTO INSTALLER (start here!)
-├── setup-bulletproof.sh         # 💯 BULLETPROOF INSTALLER (recommended)
-├── setup.sh                     # 🔧 Standard installer with detection
+├── setup.sh                     # 🎯 MAIN INSTALLER (start here!)
+├── ethernet-monitor.sh          # 🔍 Ethernet monitoring service core
+├── install.sh                   # 🔧 Auto-detecting installer wrapper
 ├── diagnose-wifi.sh             # 🔍 Hardware diagnostic tool
-├── setup-wifi-provisioning.sh   # Main WiFi provisioning installer
+├── setup-wifi-provisioning.sh   # WiFi provisioning system installer
 ├── setup-wifi-connect.sh        # WiFi Connect fallback installer  
 ├── install-dependencies.sh      # System dependency installer
 ├── download-packages.sh         # Download offline packages
@@ -123,9 +155,9 @@ nipux-setup/
 │   └── install-offline-packages.sh
 ├── offline-deps/                # Essential packages
 ├── status.sh                    # 📊 Check system status (auto-created)
-├── reset.sh                     # 🔄 Reset to setup mode (auto-created)
-├── emergency-fix.sh             # 🆘 Emergency repair tool (auto-created)
+├── reset.sh                     # 🔄 Force WiFi setup mode (auto-created)
 ├── DEPLOYMENT.md                # Detailed deployment guide
+├── QUICK-START.md               # Quick reference guide
 └── README.md                    # This file
 ```
 
@@ -133,30 +165,42 @@ nipux-setup/
 
 ```
 ┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   Mobile Device │────│  Access Point    │────│ Ubuntu Server   │
-│   (Phone/Laptop)│    │  192.168.4.1     │    │                 │
+│   Ethernet      │────│  Ubuntu Server   │────│ WiFi Network    │
+│   Connection    │    │   (Primary)      │    │   (Fallback)    │
 └─────────────────┘    └──────────────────┘    └─────────────────┘
                               │
                               ▼
                        ┌──────────────────┐
-                       │  Captive Portal  │
-                       │  (nginx + PHP)   │
+                       │ Ethernet Monitor │
+                       │  Service (Core)  │
                        └──────────────────┘
                               │
                               ▼
-                       ┌──────────────────┐
-                       │ NetworkManager   │
-                       │ WiFi Connection  │
-                       └──────────────────┘
+            ┌─────────────────────────────────────────┐
+            │           WiFi Provisioning             │
+            │      (Activated when needed)            │
+            └─────────────────────────────────────────┘
+                              │
+    ┌─────────────────┐       ▼        ┌──────────────────┐
+    │   Mobile Device │────────────────│  Access Point    │
+    │   (Phone/Laptop)│                │  192.168.4.1     │
+    └─────────────────┘                └──────────────────┘
+                                              │
+                                              ▼
+                                       ┌──────────────────┐
+                                       │  Captive Portal  │
+                                       │  (nginx + PHP)   │
+                                       └──────────────────┘
 ```
 
 ## 🔍 Components
 
-- **hostapd**: Creates WiFi access point
-- **dnsmasq**: Provides DHCP and DNS services
+- **nipux-ethernet-monitor**: Core service that monitors ethernet and controls WiFi provisioning
+- **hostapd**: Creates WiFi access point when needed
+- **dnsmasq**: Provides DHCP and DNS services for access point
 - **nginx**: Serves captive portal web interface
 - **PHP**: Handles WiFi scanning and connection API
-- **NetworkManager**: Manages WiFi connections
+- **NetworkManager**: Manages both ethernet and WiFi connections
 - **systemd**: Service management and monitoring
 
 ## 📊 Monitoring & Logs

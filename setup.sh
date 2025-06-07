@@ -1,8 +1,8 @@
 #!/bin/bash
 
-# NiPux Setup - Unified Installation Script
-# Automatically sets up WiFi provisioning system on Ubuntu Server
-# No manual steps required - just run and reboot
+# NiPux Setup - Ethernet-First Network Management System
+# Monitors ethernet connection and provides WiFi fallback when disconnected
+# Robust, automatic network provisioning for headless servers
 
 set -euo pipefail
 
@@ -35,8 +35,9 @@ show_banner() {
 ██║ ╚████║██║██║     ╚██████╔╝██╔╝ ██╗
 ╚═╝  ╚═══╝╚═╝╚═╝      ╚═════╝ ╚═╝  ╚═╝
 
-WiFi Provisioning Setup - Unified Installer
-==========================================
+Ethernet-First Network Management System
+========================================
+Auto-detects ethernet connection, provides WiFi fallback
 EOF
 }
 
@@ -191,13 +192,73 @@ install_dependencies() {
     log_success "Dependencies installed"
 }
 
-# Setup WiFi provisioning system
+# Setup ethernet monitoring system
+setup_ethernet_monitoring() {
+    log_info "Setting up ethernet monitoring system..."
+    
+    # Create configuration directory
+    $SUDO_CMD mkdir -p /etc/nipux
+    $SUDO_CMD mkdir -p /var/log/nipux
+    
+    # Copy ethernet monitor script
+    $SUDO_CMD cp "$SCRIPT_DIR/ethernet-monitor.sh" /usr/local/bin/nipux-ethernet-monitor
+    $SUDO_CMD chmod +x /usr/local/bin/nipux-ethernet-monitor
+    
+    # Create ethernet monitoring service
+    $SUDO_CMD tee /etc/systemd/system/nipux-ethernet-monitor.service > /dev/null << 'EOF'
+[Unit]
+Description=NiPux Ethernet Monitor Service
+After=network.target NetworkManager.service
+Wants=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/nipux-ethernet-monitor monitor
+Restart=always
+RestartSec=5
+User=root
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    
+    log_success "Ethernet monitoring system configured"
+}
+
+# Setup WiFi provisioning system (modified for new architecture)
 setup_wifi_provisioning() {
     log_info "Setting up WiFi provisioning system..."
     
     if [[ -f "$SCRIPT_DIR/setup-wifi-provisioning.sh" ]]; then
         log_info "Running WiFi provisioning setup..."
+        
+        # Modify the WiFi provisioning setup to work with ethernet monitoring
+        # Create a wrapper service that can be controlled by ethernet monitor
+        $SUDO_CMD tee /etc/systemd/system/nipux-wifi-provisioning.service > /dev/null << 'EOF'
+[Unit]
+Description=NiPux WiFi Provisioning Service
+After=network.target
+ConditionPathExists=!/etc/nipux/ethernet-connected
+
+[Service]
+Type=forking
+ExecStart=/bin/bash -c 'systemctl start wifi-provisioning'
+ExecStop=/bin/bash -c 'systemctl stop wifi-provisioning'
+RemainAfterExit=yes
+Restart=no
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        
+        # Run the original WiFi provisioning setup
         bash "$SCRIPT_DIR/setup-wifi-provisioning.sh"
+        
+        # Disable automatic startup of original service (will be controlled by ethernet monitor)
+        $SUDO_CMD systemctl disable wifi-provisioning 2>/dev/null || true
+        
     else
         log_error "WiFi provisioning setup script not found!"
         exit 1
@@ -246,10 +307,16 @@ enable_services() {
     # Reload systemd daemon
     $SUDO_CMD systemctl daemon-reload
     
-    # Enable main WiFi provisioning service if it exists
-    if [[ -f "/etc/systemd/system/wifi-provisioning.service" ]]; then
-        $SUDO_CMD systemctl enable wifi-provisioning.service
-        log_success "WiFi provisioning service enabled"
+    # Enable ethernet monitoring service (main controller)
+    if [[ -f "/etc/systemd/system/nipux-ethernet-monitor.service" ]]; then
+        $SUDO_CMD systemctl enable nipux-ethernet-monitor.service
+        log_success "Ethernet monitoring service enabled"
+    fi
+    
+    # Enable WiFi provisioning wrapper service
+    if [[ -f "/etc/systemd/system/nipux-wifi-provisioning.service" ]]; then
+        $SUDO_CMD systemctl enable nipux-wifi-provisioning.service
+        log_success "WiFi provisioning wrapper service enabled"
     fi
     
     # Enable monitoring service if it exists
@@ -259,11 +326,8 @@ enable_services() {
         log_success "Health monitoring enabled"
     fi
     
-    # Enable WiFi Connect fallback if it exists
-    if [[ -f "/etc/systemd/system/wifi-connect.service" ]]; then
-        $SUDO_CMD systemctl enable wifi-connect.service
-        log_success "WiFi Connect fallback enabled"
-    fi
+    # Note: Original wifi-provisioning service is managed by ethernet monitor
+    log_info "Main WiFi provisioning service will be controlled by ethernet monitor"
 }
 
 # Create helpful scripts
@@ -273,13 +337,34 @@ create_helper_scripts() {
     # Create status check script
     cat > "$SCRIPT_DIR/status.sh" << 'EOF'
 #!/bin/bash
-# Quick status check for WiFi provisioning
+# Quick status check for NiPux Network Management System
 
-echo "=== WiFi Provisioning System Status ==="
+echo "=== NiPux Network Management Status ==="
 echo
 
-# Check if connected to WiFi
-if nmcli -t -f TYPE,STATE dev | grep -q ":connected"; then
+# Check ethernet connection
+ethernet_status=$(sudo /usr/local/bin/nipux-ethernet-monitor check 2>/dev/null || echo "No connection")
+echo "Network Status: $ethernet_status"
+
+echo
+
+# Check ethernet interfaces
+if ip link show | grep -E "eth|enp|ens" | grep "state UP" >/dev/null; then
+    echo "✓ Ethernet: Interface available"
+    ip link show | grep -E "eth|enp|ens" | grep "state UP" | cut -d: -f2 | while read iface; do
+        if ip addr show "$iface" | grep -q "inet "; then
+            ip_addr=$(ip addr show "$iface" | grep "inet " | head -1 | awk '{print $2}' | cut -d/ -f1)
+            echo "  Interface $iface: $ip_addr"
+        fi
+    done
+else
+    echo "✗ Ethernet: No active interfaces"
+fi
+
+echo
+
+# Check WiFi connection
+if nmcli -t -f TYPE,STATE dev | grep -q "wifi:connected"; then
     echo "✓ WiFi: Connected"
     nmcli -t -f DEVICE,CONNECTION dev status | grep wifi | head -1
 else
@@ -288,51 +373,60 @@ fi
 
 echo
 
-# Check service status
-if systemctl is-active --quiet wifi-provisioning 2>/dev/null; then
-    echo "✓ Provisioning: Active (setup mode)"
-elif [[ -f /etc/wifi-provisioning/wifi-connected ]]; then
-    echo "✓ Provisioning: Inactive (WiFi connected)"
+# Check monitoring service status
+if systemctl is-active --quiet nipux-ethernet-monitor 2>/dev/null; then
+    echo "✓ Ethernet Monitor: Running"
 else
-    echo "? Provisioning: Unknown state"
+    echo "✗ Ethernet Monitor: Not running"
 fi
 
-echo
-
-# Check for access point
-if iwconfig 2>/dev/null | grep -q "Mode:Master"; then
-    echo "✓ Access Point: Running"
+# Check WiFi provisioning status
+if systemctl is-active --quiet wifi-provisioning 2>/dev/null; then
+    echo "✓ WiFi Provisioning: Active (setup mode)"
     hostname=$(hostname)
     echo "  SSID: ${hostname}-setup"
     echo "  IP: 192.168.4.1"
 else
-    echo "✗ Access Point: Not running"
+    echo "✗ WiFi Provisioning: Inactive"
+fi
+
+echo
+
+# Show network status from file
+if [[ -f /etc/nipux/network-status ]]; then
+    echo "Current Status: $(cat /etc/nipux/network-status)"
+else
+    echo "Status: Unknown"
 fi
 
 echo
 
 # Show recent logs
 echo "Recent logs:"
-sudo journalctl -u wifi-provisioning --no-pager -n 3 2>/dev/null || echo "No recent logs"
+sudo journalctl -u nipux-ethernet-monitor --no-pager -n 3 2>/dev/null || echo "No recent logs"
 EOF
     chmod +x "$SCRIPT_DIR/status.sh"
     
     # Create reset script
     cat > "$SCRIPT_DIR/reset.sh" << 'EOF'
 #!/bin/bash
-# Reset WiFi provisioning to setup mode
+# Force reset to WiFi provisioning setup mode
 
-echo "Resetting WiFi provisioning to setup mode..."
+echo "Forcing NiPux system to WiFi provisioning mode..."
 
-# Remove connected flag
-sudo rm -f /etc/wifi-provisioning/wifi-connected
+# Remove ethernet connection status
+sudo rm -f /etc/nipux/active-ethernet
+sudo rm -f /etc/nipux/network-status
 
-# Stop and restart service
-sudo systemctl stop wifi-provisioning 2>/dev/null || true
-sudo systemctl start wifi-provisioning 2>/dev/null || true
+# Disconnect WiFi to force provisioning
+sudo nmcli device disconnect $(nmcli -t -f DEVICE,TYPE dev | grep wifi | cut -d: -f1) 2>/dev/null || true
 
-echo "✓ Reset complete. System should enter setup mode."
+# Stop and restart ethernet monitor (will detect no connection and start WiFi provisioning)
+sudo systemctl restart nipux-ethernet-monitor
+
+echo "✓ Reset complete. System should start WiFi provisioning mode."
 echo "Look for access point: $(hostname)-setup"
+echo "Monitor status with: ./status.sh"
 EOF
     chmod +x "$SCRIPT_DIR/reset.sh"
     
@@ -378,24 +472,33 @@ show_final_instructions() {
     
     cat << EOF
 
-${GREEN}🎉 NiPux WiFi Provisioning Setup Complete!${NC}
+${GREEN}🎉 NiPux Ethernet-First Network Management Setup Complete!${NC}
 
-${BLUE}What happens next:${NC}
-1. ${YELLOW}Reboot your system${NC} to activate WiFi provisioning
-2. If no WiFi is configured, the system will create: ${YELLOW}${hostname}-setup${NC} access point
-3. Connect any device to this network and follow the setup portal
+${BLUE}How it works:${NC}
+1. ${YELLOW}System monitors ethernet connection continuously${NC}
+2. If ethernet is connected: Uses ethernet, WiFi provisioning stays inactive
+3. If ethernet disconnected: Automatically starts WiFi provisioning mode
+4. WiFi provisioning creates: ${YELLOW}${hostname}-setup${NC} access point
+5. After WiFi setup: Connects to WiFi and stops access point
+
+${BLUE}What happens on reboot:${NC}
+• System checks for ethernet connection first
+• If ethernet available: Normal operation with ethernet
+• If no ethernet: Starts WiFi provisioning automatically
 
 ${BLUE}Useful commands:${NC}
-• Check status:     ${YELLOW}$SCRIPT_DIR/status.sh${NC}
-• Reset to setup:   ${YELLOW}$SCRIPT_DIR/reset.sh${NC}
-• View logs:        ${YELLOW}sudo journalctl -u wifi-provisioning -f${NC}
+• Check status:       ${YELLOW}$SCRIPT_DIR/status.sh${NC}
+• Force WiFi setup:   ${YELLOW}$SCRIPT_DIR/reset.sh${NC}
+• View monitor logs:  ${YELLOW}sudo journalctl -u nipux-ethernet-monitor -f${NC}
+• View WiFi logs:     ${YELLOW}sudo journalctl -u wifi-provisioning -f${NC}
 
 ${BLUE}Troubleshooting:${NC}
-• Access point IP:  ${YELLOW}192.168.4.1${NC}
-• Config directory: ${YELLOW}/etc/wifi-provisioning${NC}
-• Web interface:    ${YELLOW}/var/www/wifi-setup${NC}
+• WiFi setup IP:      ${YELLOW}192.168.4.1${NC}
+• Config directory:   ${YELLOW}/etc/nipux${NC}
+• WiFi interface:     ${YELLOW}/var/www/wifi-setup${NC}
+• Monitor status:     ${YELLOW}sudo /usr/local/bin/nipux-ethernet-monitor status${NC}
 
-${GREEN}🚀 Ready to use! Reboot now to activate the system.${NC}
+${GREEN}🚀 Ready to use! Reboot now to activate the ethernet monitoring system.${NC}
 
 EOF
 }
@@ -416,6 +519,7 @@ main() {
     
     # Core installation steps
     install_dependencies
+    setup_ethernet_monitoring
     setup_wifi_provisioning
     fix_permissions
     enable_services

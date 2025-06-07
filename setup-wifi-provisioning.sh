@@ -838,11 +838,14 @@ try {
     exec($cmd, $output, $returnVar);
     
     if ($returnVar === 0) {
-        // Mark as connected and trigger shutdown
+        // Mark as connected for both old and new systems
         file_put_contents('/etc/wifi-provisioning/wifi-connected', date('Y-m-d H:i:s'));
         
-        // Trigger service shutdown in background
-        exec('sudo systemctl stop wifi-provisioning 2>/dev/null &');
+        // Update NiPux ethernet monitor status
+        file_put_contents('/etc/nipux/network-status', 'wifi-connected');
+        
+        // The ethernet monitor will detect WiFi connection and stop provisioning
+        // No need to manually stop services - let the monitor handle it
         
         echo json_encode([
             'success' => true,
@@ -986,7 +989,7 @@ create_main_service() {
 Description=WiFi Provisioning System
 After=network.target
 Wants=network.target
-ConditionPathExists=!$CONFIG_DIR/wifi-connected
+# Note: No auto-start conditions - controlled by nipux-ethernet-monitor
 
 [Service]
 Type=forking
@@ -999,7 +1002,8 @@ TimeoutStartSec=60
 TimeoutStopSec=30
 
 [Install]
-WantedBy=multi-user.target
+# Note: Service managed by ethernet monitor, not auto-enabled
+# WantedBy=multi-user.target
 EOF
 
     log_success "Main service created"
