@@ -1,0 +1,9 @@
+Essential packages for WiFi provisioning:
+- hostapd: WiFi access point daemon
+- dnsmasq: DHCP and DNS server  
+- nginx-light: Lightweight web server
+- iw: Wireless configuration tool
+- wireless-tools: WiFi utilities
+- wpasupplicant: WiFi client
+
+Run ./install-packages.sh to install these packages offline.

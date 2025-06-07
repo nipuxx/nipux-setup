@@ -1,206 +1,257 @@
-# WiFi Connect Setup Script
+# Ubuntu Server WiFi Provisioning System
 
-A comprehensive bash script that automates the installation and configuration of [balena wifi-connect](https://github.com/balena-os/wifi-connect) for plug-and-play WiFi provisioning on Ubuntu/Debian systems.
+🚀 **Production-grade, offline-capable WiFi provisioning for Ubuntu Server** 
 
-## 🚀 Quick Start
+Automatically creates an access point for WiFi configuration when no internet connection is available. Perfect for headless server deployments via USB drive.
+
+## ✨ Features
+
+- **Fully Offline**: Works without internet connectivity
+- **Production Ready**: Comprehensive error handling, logging, monitoring
+- **Self-Contained**: All dependencies included or bundled
+- **Automatic**: Starts on boot when no WiFi connection exists
+- **User-Friendly**: Mobile-responsive captive portal interface
+- **Robust**: Health checks, recovery mechanisms, comprehensive testing
+
+## 🎯 How It Works
+
+1. **Boot Detection** → System checks for WiFi connection
+2. **Access Point** → Creates `{hostname}-setup` hotspot if no WiFi
+3. **Captive Portal** → User connects and gets redirected to setup page
+4. **WiFi Selection** → Scan networks, select, and enter password
+5. **Auto-Connect** → Connects to WiFi and shuts down access point
+6. **Done** → Normal operation with WiFi connected
+
+## 🚀 Quick Start (Ubuntu Server)
 
 ```bash
-# Download and run the setup script
-./setup-wifi-connect.sh
+# Clone repository
+git clone https://github.com/yourusername/nipux-setup.git
+cd nipux-setup
+
+# Install offline dependencies (optional but recommended)
+cd offline-deps && ./install-packages.sh && cd ..
+
+# Run main setup
+./setup-wifi-provisioning.sh
+
+# Reboot to activate
+sudo reboot
 ```
 
-That's it! The script will handle everything automatically.
+## 📋 Requirements
 
-## 📋 What This Script Does
+- **OS**: Ubuntu Server 18.04+ or Debian 10+
+- **Hardware**: WiFi adapter capable of AP mode
+- **Memory**: 512MB RAM minimum
+- **Storage**: 2GB free disk space
+- **Access**: sudo privileges
 
-1. **Installs Dependencies**: NetworkManager, dnsmasq-base, and other required packages
-2. **Downloads wifi-connect**: Fetches the latest pre-built binary (v5.0.3)
-3. **Creates System Service**: Sets up a systemd service that starts automatically
-4. **Configures Network Management**: Creates cleanup scripts and NetworkManager hooks
-5. **Provides Easy Uninstall**: Generates an uninstall script for easy removal
+## 🌐 User Experience
 
-## 🔧 How It Works
+### For End Users
+1. Look for WiFi network: `{hostname}-setup`
+2. Connect (no password required)
+3. Browser automatically opens setup page
+4. Select WiFi network and enter password
+5. System connects and setup completes
 
-### Automatic WiFi Provisioning Flow
+### Access Point Details
+- **SSID**: `{hostname}-setup` (e.g., `ubuntu-server-setup`)
+- **IP Address**: `192.168.4.1`
+- **DHCP Range**: `192.168.4.10-50`
+- **Portal URL**: `http://192.168.4.1`
 
-1. **Device boots** without WiFi connection
-2. **Hotspot activates** automatically with SSID: `{hostname}-setup`
-3. **User connects** to the hotspot with any device (phone, laptop, etc.)
-4. **Captive portal** appears automatically
-5. **User selects** their WiFi network and enters password
-6. **Device connects** to the real WiFi and hotspot disappears
-7. **System remembers** the WiFi for future connections
+## 🛠️ Management Commands
 
-### Technical Details
-
-- **Hotspot SSID**: `{your-hostname}-setup` (e.g., `raspberrypi-setup`)
-- **Portal IP**: `192.168.4.1`
-- **Service Type**: systemd service with automatic restart
-- **Network Detection**: Uses NetworkManager connection monitoring
-- **Cleanup**: Automatic removal of connection flags when network drops
-
-## 📱 User Experience
-
-### For End Users (Device Setup)
-1. Look for WiFi network named `{hostname}-setup`
-2. Connect to it (no password required)
-3. Web page should open automatically (captive portal)
-4. If not, navigate to `http://192.168.4.1` in your browser
-5. Select your WiFi network from the list
-6. Enter your WiFi password
-7. Click "Connect"
-8. Device will reboot networking and connect to your WiFi
-
-### For Administrators
 ```bash
-# Check service status
-sudo systemctl status wifi-connect
+# Check system status
+sudo systemctl status wifi-provisioning
 
 # View real-time logs
-sudo journalctl -u wifi-connect -f
+sudo journalctl -u wifi-provisioning -f
 
-# Manually start the hotspot
-sudo systemctl start wifi-connect
+# Run health check
+sudo /etc/wifi-provisioning/scripts/health-check.sh
 
-# Stop the hotspot
-sudo systemctl stop wifi-connect
+# Run system tests
+sudo /etc/wifi-provisioning/scripts/test-system.sh
 
-# Force reset (remove connection memory)
-sudo rm -f /var/run/wifi-connected
-sudo systemctl restart wifi-connect
+# Force start provisioning (if stuck)
+sudo rm -f /etc/wifi-provisioning/wifi-connected
+sudo systemctl restart wifi-provisioning
+
+# Emergency stop
+sudo systemctl stop wifi-provisioning
 ```
 
-## 🛠 System Requirements
+## 📁 Project Structure
 
-- **OS**: Ubuntu 18.04+ or Debian 10+
-- **Hardware**: Device with WiFi capability
-- **Network**: Internet connection for initial setup
-- **Privileges**: sudo access
-- **Dependencies**: Automatically installed by the script
+```
+nipux-setup/
+├── setup-wifi-provisioning.sh    # Main installation script
+├── install-dependencies.sh       # Dependency installer
+├── download-packages.sh          # Download offline packages
+├── offline-deps/                 # Pre-downloaded Ubuntu packages
+│   ├── *.deb                     # Essential .deb files
+│   └── install-packages.sh       # Offline installer
+├── DEPLOYMENT.md                 # Detailed deployment guide
+├── uninstall-wifi-provisioning.sh # Auto-generated uninstaller
+└── README.md                     # This file
+```
 
-## 📊 Monitoring and Troubleshooting
+## 🔧 Architecture
 
-### Check Status
+```
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│   Mobile Device │────│  Access Point    │────│ Ubuntu Server   │
+│   (Phone/Laptop)│    │  192.168.4.1     │    │                 │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+                              │
+                              ▼
+                       ┌──────────────────┐
+                       │  Captive Portal  │
+                       │  (nginx + PHP)   │
+                       └──────────────────┘
+                              │
+                              ▼
+                       ┌──────────────────┐
+                       │ NetworkManager   │
+                       │ WiFi Connection  │
+                       └──────────────────┘
+```
+
+## 🔍 Components
+
+- **hostapd**: Creates WiFi access point
+- **dnsmasq**: Provides DHCP and DNS services
+- **nginx**: Serves captive portal web interface
+- **PHP**: Handles WiFi scanning and connection API
+- **NetworkManager**: Manages WiFi connections
+- **systemd**: Service management and monitoring
+
+## 📊 Monitoring & Logs
+
+### Log Locations
+- **System**: `/var/log/wifi-provisioning/system.log`
+- **Access Point**: `/var/log/wifi-provisioning/ap.log` 
+- **Web Server**: `/var/log/nginx/access.log`
+- **Service**: `journalctl -u wifi-provisioning`
+
+### Health Monitoring
+- Automatic health checks every 5 minutes
+- Service restart on failure
+- Network interface monitoring
+- Web portal accessibility checks
+
+## 🧪 Testing
+
 ```bash
-# Service status
-sudo systemctl status wifi-connect
+# Run comprehensive test suite
+sudo /etc/wifi-provisioning/scripts/test-system.sh
 
-# View logs
-sudo journalctl -u wifi-connect --no-pager
-
-# Check NetworkManager status
-sudo systemctl status NetworkManager
-
-# List network interfaces
-ip link show
+# Manual testing checklist
+# □ Boot without WiFi - AP starts automatically
+# □ Connect mobile device to AP
+# □ Captive portal opens in browser
+# □ Can scan and see available networks
+# □ Can connect to test WiFi network
+# □ AP shuts down after connection
+# □ WiFi persists after reboot
 ```
+
+## 🔒 Security
+
+- **Open AP**: Intentionally unencrypted for easy access
+- **Isolated Network**: Separate 192.168.4.0/24 subnet
+- **Time-Limited**: Shuts down after successful configuration
+- **No Internet**: AP doesn't bridge to internet during setup
+- **Local Only**: Web interface only accessible from AP clients
+
+## 🛠️ Troubleshooting
 
 ### Common Issues
 
-#### Hotspot doesn't appear
+**AP Not Starting**
 ```bash
-# Check if service is running
-sudo systemctl status wifi-connect
-
-# Check for existing connections
-nmcli connection show
-
-# Manually remove connection flag
-sudo rm -f /var/run/wifi-connected
-sudo systemctl restart wifi-connect
+sudo systemctl status hostapd
+sudo rfkill list
+sudo iw dev
 ```
 
-#### Captive portal doesn't load
+**Captive Portal Not Loading**
 ```bash
-# Check if the service is bound to the correct interface
-sudo netstat -tulpn | grep :80
-
-# Manually navigate to the portal
-# Open browser and go to: http://192.168.4.1
+sudo systemctl status nginx
+curl -v http://192.168.4.1
 ```
 
-#### Device won't connect to selected WiFi
+**WiFi Connection Fails**
 ```bash
-# Check NetworkManager logs
 sudo journalctl -u NetworkManager -f
-
-# List saved connections
-nmcli connection show
-
-# Test manual connection
-nmcli device wifi connect "SSID" password "password"
+sudo nmcli dev wifi list
 ```
 
-## 🗑 Uninstallation
-
-The setup script creates an uninstall script automatically:
-
+**Service Stuck**
 ```bash
-./uninstall-wifi-connect.sh
+sudo systemctl stop wifi-provisioning
+sudo systemctl start wifi-provisioning
 ```
 
-### Manual Uninstall
+## 🗑️ Uninstall
+
 ```bash
-# Stop and disable service
-sudo systemctl stop wifi-connect.service
-sudo systemctl disable wifi-connect.service
+# Automatic uninstaller (created during setup)
+./uninstall-wifi-provisioning.sh
 
-# Remove files
-sudo rm -f /etc/systemd/system/wifi-connect.service
-sudo rm -f /usr/local/bin/wifi-connect
-sudo rm -f /usr/local/bin/wifi-connect-cleanup
-sudo rm -f /etc/NetworkManager/dispatcher.d/99-wifi-connect
-sudo rm -f /var/run/wifi-connected
-
-# Reload systemd
+# Manual removal
+sudo systemctl stop wifi-provisioning
+sudo systemctl disable wifi-provisioning
+sudo rm -rf /etc/wifi-provisioning
+sudo rm -rf /var/www/wifi-setup
 sudo systemctl daemon-reload
 ```
 
-## 🔒 Security Considerations
+## 🚀 Deployment Scenarios
 
-- **Hotspot Security**: The setup hotspot is intentionally unencrypted for easy access
-- **Portal Security**: The captive portal runs on HTTP (port 80) for compatibility
-- **Network Isolation**: The hotspot creates an isolated network segment
-- **Automatic Shutdown**: The hotspot shuts down immediately after successful configuration
-- **No Persistence**: WiFi credentials are handled by NetworkManager, not stored by wifi-connect
+### USB Drive Deployment
+1. Download this repository to USB drive
+2. Insert USB into Ubuntu Server
+3. Copy files and run setup script
+4. Remove USB and reboot
 
-## 🎯 Use Cases
+### Remote Deployment
+1. Upload via SCP/SFTP when internet available
+2. Run setup script
+3. System ready for offline WiFi provisioning
 
-- **IoT Device Setup**: Easy WiFi provisioning for headless devices
-- **Raspberry Pi Projects**: Plug-and-play WiFi setup for Pi-based projects
-- **Embedded Systems**: Simple network configuration for embedded Linux devices
-- **Field Deployment**: Easy network setup without keyboard/display
-- **Customer Premises**: User-friendly WiFi setup for deployed devices
+### Field Installation
+1. Pre-configure on test device
+2. Clone SD card/storage to production devices
+3. Devices auto-configure WiFi on first boot
 
-## 📋 File Structure
+## 📚 Documentation
 
-After installation, the following files are created:
-
-```
-/usr/local/bin/wifi-connect              # Main binary
-/usr/local/bin/wifi-connect-cleanup      # Network cleanup script
-/etc/systemd/system/wifi-connect.service # Systemd service
-/etc/NetworkManager/dispatcher.d/99-wifi-connect # NM hook
-/var/run/wifi-connected                  # Connection flag (when connected)
-./uninstall-wifi-connect.sh             # Uninstall script
-```
+- **[DEPLOYMENT.md](DEPLOYMENT.md)** - Comprehensive deployment guide
+- **[API Documentation](docs/API.md)** - Web interface API reference
+- **[Troubleshooting Guide](docs/TROUBLESHOOTING.md)** - Common issues and solutions
 
 ## 🤝 Contributing
 
-This setup script is designed to be:
-- **Idempotent**: Safe to run multiple times
-- **Robust**: Comprehensive error checking and validation
-- **User-friendly**: Clear feedback and colored output
-- **Maintainable**: Well-documented and modular code
-
-Feel free to submit issues or improvements!
+1. Test on your Ubuntu Server setup
+2. Report issues with system logs
+3. Submit pull requests with improvements
+4. Update documentation for clarity
 
 ## 📄 License
 
-This setup script is provided as-is. The wifi-connect binary is licensed under Apache 2.0 by Balena.
+MIT License - Feel free to use in production environments.
 
 ## 🔗 References
 
-- [balena wifi-connect GitHub](https://github.com/balena-os/wifi-connect)
-- [NetworkManager Documentation](https://networkmanager.dev/)
-- [systemd Service Documentation](https://www.freedesktop.org/software/systemd/man/systemd.service.html) 
+- [hostapd Documentation](https://w1.fi/hostapd/)
+- [NetworkManager Guide](https://networkmanager.dev/)
+- [Ubuntu Server Documentation](https://ubuntu.com/server/docs)
+
+---
+
+**Ready for production deployment on Ubuntu Server! 🎉**
