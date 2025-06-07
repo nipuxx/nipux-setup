@@ -77,14 +77,87 @@ detect_system() {
     
     log_success "Detected OS: $ID $VERSION_ID"
     
-    # Check for wireless interface
-    if ! iw dev | grep -q "Interface"; then
-        log_error "No wireless interface found. This system requires a WiFi adapter."
-        exit 1
+    # Check for wireless hardware and interfaces
+    log_info "Checking for wireless hardware..."
+    
+    # First check if wireless hardware exists
+    local wireless_hardware_found=false
+    if lspci | grep -i "network\|wireless\|wifi" | grep -v "Ethernet"; then
+        log_info "Found wireless hardware in PCI devices"
+        wireless_hardware_found=true
+    elif lsusb | grep -i "wireless\|wifi\|802.11"; then
+        log_info "Found wireless hardware in USB devices" 
+        wireless_hardware_found=true
+    elif dmesg | grep -i "wireless\|wifi\|802.11" | head -3; then
+        log_info "Found wireless references in kernel messages"
+        wireless_hardware_found=true
     fi
     
-    local wireless_interface=$(iw dev | awk '$1=="Interface"{print $2}' | head -1)
-    log_success "Found wireless interface: $wireless_interface"
+    # Try to find wireless interfaces
+    local wireless_interface=""
+    if iw dev 2>/dev/null | grep -q "Interface"; then
+        wireless_interface=$(iw dev | awk '$1=="Interface"{print $2}' | head -1)
+        log_success "Found active wireless interface: $wireless_interface"
+    elif ip link show | grep -E "wlan|wlp|wifi"; then
+        wireless_interface=$(ip link show | grep -E "wlan|wlp|wifi" | head -1 | cut -d: -f2 | tr -d ' ')
+        log_info "Found potential wireless interface: $wireless_interface"
+    elif ls /sys/class/net/ | grep -E "wlan|wlp|wifi"; then
+        wireless_interface=$(ls /sys/class/net/ | grep -E "wlan|wlp|wifi" | head -1)
+        log_info "Found wireless interface in /sys/class/net: $wireless_interface"
+    fi
+    
+    # If no interface found but hardware exists, try to load drivers
+    if [[ -z "$wireless_interface" ]] && [[ "$wireless_hardware_found" == "true" ]]; then
+        log_warning "Wireless hardware found but no interface detected. Attempting to load drivers..."
+        
+        # Install wireless drivers if not present
+        $SUDO_CMD apt-get update -qq 2>/dev/null || true
+        $SUDO_CMD apt-get install -y linux-firmware wireless-tools wpasupplicant rfkill 2>/dev/null || true
+        
+        # Check if wireless is blocked by rfkill
+        if command -v rfkill >/dev/null 2>&1; then
+            log_info "Checking for blocked wireless interfaces..."
+            $SUDO_CMD rfkill unblock wifi 2>/dev/null || true
+            $SUDO_CMD rfkill unblock all 2>/dev/null || true
+        fi
+        
+        # Try to bring up wireless interfaces
+        for iface in $(ls /sys/class/net/ 2>/dev/null); do
+            if [[ -d "/sys/class/net/$iface/wireless" ]]; then
+                log_info "Found wireless capability on interface: $iface"
+                $SUDO_CMD ip link set "$iface" up 2>/dev/null || true
+                wireless_interface="$iface"
+                break
+            fi
+        done
+        
+        # Reload network modules
+        $SUDO_CMD modprobe cfg80211 2>/dev/null || true
+        $SUDO_CMD modprobe mac80211 2>/dev/null || true
+        
+        # Wait a moment and check again
+        sleep 2
+        if iw dev 2>/dev/null | grep -q "Interface"; then
+            wireless_interface=$(iw dev | awk '$1=="Interface"{print $2}' | head -1)
+            log_success "Successfully activated wireless interface: $wireless_interface"
+        fi
+    fi
+    
+    # Final check
+    if [[ -z "$wireless_interface" ]]; then
+        if [[ "$wireless_hardware_found" == "true" ]]; then
+            log_error "Wireless hardware detected but no working interface found."
+            log_info "This may require specific drivers for your hardware."
+            log_info "Try running: sudo lshw -C network"
+            exit 1
+        else
+            log_error "No wireless hardware found on this system."
+            log_info "This system requires a WiFi adapter to function."
+            exit 1
+        fi
+    fi
+    
+    log_success "Wireless interface ready: $wireless_interface"
 }
 
 # Install dependencies using the existing script

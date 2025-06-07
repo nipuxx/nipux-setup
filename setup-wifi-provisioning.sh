@@ -93,17 +93,84 @@ check_requirements() {
         exit 1
     fi
     
-    # Check for wireless interface
-    if ! iw dev | grep -q "Interface"; then
-        log_error "No wireless interface found"
-        exit 1
+    # Check for wireless hardware and interfaces
+    log_info "Detecting wireless hardware..."
+    
+    # First check if wireless hardware exists
+    local wireless_hardware_found=false
+    if lspci | grep -i "network\|wireless\|wifi" | grep -v "Ethernet"; then
+        log_info "Found wireless hardware in PCI devices"
+        wireless_hardware_found=true
+    elif lsusb | grep -i "wireless\|wifi\|802.11"; then
+        log_info "Found wireless hardware in USB devices" 
+        wireless_hardware_found=true
+    elif dmesg | grep -i "wireless\|wifi\|802.11" | head -3; then
+        log_info "Found wireless references in kernel messages"
+        wireless_hardware_found=true
     fi
     
-    # Find the wireless interface
-    AP_INTERFACE=$(iw dev | awk '$1=="Interface"{print $2}' | head -1)
+    # Try to find wireless interfaces
+    AP_INTERFACE=""
+    if iw dev 2>/dev/null | grep -q "Interface"; then
+        AP_INTERFACE=$(iw dev | awk '$1=="Interface"{print $2}' | head -1)
+        log_info "Found active wireless interface: $AP_INTERFACE"
+    elif ip link show | grep -E "wlan|wlp|wifi"; then
+        AP_INTERFACE=$(ip link show | grep -E "wlan|wlp|wifi" | head -1 | cut -d: -f2 | tr -d ' ')
+        log_info "Found potential wireless interface: $AP_INTERFACE"
+    elif ls /sys/class/net/ | grep -E "wlan|wlp|wifi"; then
+        AP_INTERFACE=$(ls /sys/class/net/ | grep -E "wlan|wlp|wifi" | head -1)
+        log_info "Found wireless interface in /sys/class/net: $AP_INTERFACE"
+    fi
+    
+    # If no interface found but hardware exists, try to enable it
+    if [[ -z "$AP_INTERFACE" ]] && [[ "$wireless_hardware_found" == "true" ]]; then
+        log_info "Wireless hardware found but no interface detected. Attempting to activate..."
+        
+        # Install wireless drivers if not present
+        $SUDO_CMD apt-get update -qq 2>/dev/null || true
+        $SUDO_CMD apt-get install -y linux-firmware wireless-tools wpasupplicant rfkill 2>/dev/null || true
+        
+        # Check if wireless is blocked by rfkill
+        if command -v rfkill >/dev/null 2>&1; then
+            log_info "Checking for blocked wireless interfaces..."
+            $SUDO_CMD rfkill unblock wifi 2>/dev/null || true
+            $SUDO_CMD rfkill unblock all 2>/dev/null || true
+        fi
+        
+        # Try to bring up wireless interfaces
+        for iface in $(ls /sys/class/net/ 2>/dev/null); do
+            if [[ -d "/sys/class/net/$iface/wireless" ]]; then
+                log_info "Found wireless capability on interface: $iface"
+                $SUDO_CMD ip link set "$iface" up 2>/dev/null || true
+                AP_INTERFACE="$iface"
+                break
+            fi
+        done
+        
+        # Load wireless kernel modules
+        $SUDO_CMD modprobe cfg80211 2>/dev/null || true
+        $SUDO_CMD modprobe mac80211 2>/dev/null || true
+        
+        # Wait and check again
+        sleep 2
+        if iw dev 2>/dev/null | grep -q "Interface"; then
+            AP_INTERFACE=$(iw dev | awk '$1=="Interface"{print $2}' | head -1)
+            log_success "Successfully activated wireless interface: $AP_INTERFACE"
+        fi
+    fi
+    
+    # Final validation
     if [[ -z "$AP_INTERFACE" ]]; then
-        log_error "Could not determine wireless interface"
-        exit 1
+        if [[ "$wireless_hardware_found" == "true" ]]; then
+            log_error "Wireless hardware detected but no working interface found"
+            log_info "Your wireless hardware may need specific drivers"
+            log_info "Run 'sudo lshw -C network' to see network hardware details"
+            exit 1
+        else
+            log_error "No wireless hardware found on this system"
+            log_info "This system requires WiFi hardware to create an access point"
+            exit 1
+        fi
     fi
     
     log_success "Pre-flight checks passed. Using interface: $AP_INTERFACE"

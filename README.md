@@ -24,16 +24,33 @@ Automatically creates an access point for WiFi configuration when no internet co
 
 ## 🚀 Quick Start (Ubuntu Server)
 
+### Method 1: Bulletproof Installer (RECOMMENDED)
 ```bash
 # Clone or copy repository to your Ubuntu Server
 git clone <this-repo> nipux-setup
 cd nipux-setup
 
-# Run unified setup script (handles everything automatically)
+# Run bulletproof installer (handles ANY wireless hardware scenario)
+chmod +x install.sh
+./install.sh
+
+# Choose bulletproof installer (recommended)
+# System handles everything automatically and reboots when ready
+```
+
+### Method 2: Auto-Detecting Installer
+```bash
+# Alternative: Let the system choose the best installer
 chmod +x setup.sh
 ./setup.sh
+```
 
-# Follow prompts and reboot when asked
+### Method 3: Manual Component Installation
+```bash
+# For troubleshooting: Run individual components
+./diagnose-wifi.sh          # Check hardware first
+./install-dependencies.sh   # Install packages
+./setup-wifi-provisioning.sh # Configure system
 ```
 
 ## 📋 Requirements
@@ -92,7 +109,10 @@ sudo systemctl stop wifi-provisioning
 
 ```
 nipux-setup/
-├── setup.sh                     # 🎯 UNIFIED SETUP SCRIPT (start here!)
+├── install.sh                   # 🎯 AUTO INSTALLER (start here!)
+├── setup-bulletproof.sh         # 💯 BULLETPROOF INSTALLER (recommended)
+├── setup.sh                     # 🔧 Standard installer with detection
+├── diagnose-wifi.sh             # 🔍 Hardware diagnostic tool
 ├── setup-wifi-provisioning.sh   # Main WiFi provisioning installer
 ├── setup-wifi-connect.sh        # WiFi Connect fallback installer  
 ├── install-dependencies.sh      # System dependency installer
@@ -104,6 +124,7 @@ nipux-setup/
 ├── offline-deps/                # Essential packages
 ├── status.sh                    # 📊 Check system status (auto-created)
 ├── reset.sh                     # 🔄 Reset to setup mode (auto-created)
+├── emergency-fix.sh             # 🆘 Emergency repair tool (auto-created)
 ├── DEPLOYMENT.md                # Detailed deployment guide
 └── README.md                    # This file
 ```
